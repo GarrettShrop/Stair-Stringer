@@ -67,23 +67,21 @@ export function PerspectiveCalibration({
 		// Draw image
 		ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-		// Draw floor line
-		if (currentStep === "floor" || currentStep !== "floor") {
-			ctx.strokeStyle = "#4CAF50";
-			ctx.lineWidth = 3;
-			ctx.setLineDash([10, 5]);
-			ctx.beginPath();
-			const y = floorY * canvas.height;
-			ctx.moveTo(0, y);
-			ctx.lineTo(canvas.width, y);
-			ctx.stroke();
-			ctx.setLineDash([]);
+		// Draw floor line (always visible)
+		ctx.strokeStyle = "#4CAF50";
+		ctx.lineWidth = 3;
+		ctx.setLineDash([10, 5]);
+		ctx.beginPath();
+		const y = floorY * canvas.height;
+		ctx.moveTo(0, y);
+		ctx.lineTo(canvas.width, y);
+		ctx.stroke();
+		ctx.setLineDash([]);
 
-			// Label
-			ctx.fillStyle = "#4CAF50";
-			ctx.font = "bold 14px sans-serif";
-			ctx.fillText("Floor Level", 10, y - 10);
-		}
+		// Label
+		ctx.fillStyle = "#4CAF50";
+		ctx.font = "bold 14px sans-serif";
+		ctx.fillText("Floor Level", 10, y - 10);
 
 		// Draw reference points
 		points.forEach((point, i) => {
