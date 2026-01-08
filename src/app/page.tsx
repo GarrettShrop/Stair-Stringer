@@ -1,8 +1,30 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { calcStairs } from "@/lib/stairs";
 import { parseInches, toFeetInches, toFraction } from "@/lib/units";
 import { calcMaterials } from "@/lib/materials";
+import { saveImage, getImage } from "@/lib/storage/images";
+import { ImageUpload } from "@/components/rendering/ImageUpload";
+import { Canvas2DView } from "@/components/rendering/Canvas2DView";
+import { RenderingControls } from "@/components/rendering/RenderingControls";
+import type { RenderView, ViewType2D } from "@/lib/rendering/types";
+
+// Lazy load 3D component for better performance
+const Three3DView = dynamic(
+	() =>
+		import("@/components/rendering/Three3DView").then((mod) => ({
+			default: mod.Three3DView,
+		})),
+	{
+		loading: () => (
+			<div style={{ textAlign: "center", padding: 40 }}>
+				Loading 3D viewer...
+			</div>
+		),
+		ssr: false,
+	}
+);
 const DISPLAY_DENOM = 16; // field standard (1/16")
 function fmtDec(n: number) {
 	return n.toFixed(3);
@@ -20,6 +42,8 @@ type SavedJob = {
 	stairWidth: string;
 	stringerOc: string;
 	closedStair: boolean;
+	imageId?: string; // IndexedDB image reference
+	renderViewPreference?: "2d" | "3d"; // Last active view
 };
 const STORAGE_KEY = "stairStringerJobsV1";
 export default function Home() {
@@ -37,6 +61,10 @@ export default function Home() {
 	// Save/Load
 	const [jobs, setJobs] = useState<SavedJob[]>([]);
 	const [jobName, setJobName] = useState("Job");
+	// Rendering
+	const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+	const [activeRenderView, setActiveRenderView] = useState<RenderView>("none");
+	const [view2DType, setView2DType] = useState<ViewType2D>("elevation");
 	useEffect(() => {
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY);
@@ -196,7 +224,7 @@ export default function Home() {
  `);
 		w.document.close();
 	};
-	const saveJob = () => {
+	const saveJob = async () => {
 		const now = new Date();
 		const id = crypto.randomUUID();
 		const j: SavedJob = {
@@ -213,10 +241,26 @@ export default function Home() {
 			stringerOc,
 			closedStair,
 		};
+
+		// Save image if uploaded
+		if (uploadedImage) {
+			try {
+				const imageId = await saveImage(id, uploadedImage);
+				j.imageId = imageId;
+			} catch (error) {
+				console.error("Failed to save image:", error);
+			}
+		}
+
+		// Save render view preference
+		if (activeRenderView !== "none") {
+			j.renderViewPreference = activeRenderView;
+		}
+
 		setJobs((prev) => [j, ...prev]);
 		alert("Job saved.");
 	};
-	const loadJob = (j: SavedJob) => {
+	const loadJob = async (j: SavedJob) => {
 		setJobName(j.name);
 		setTotalRise(j.totalRise);
 		setTargetRiser(j.targetRiser);
@@ -227,6 +271,28 @@ export default function Home() {
 		setStairWidth(j.stairWidth);
 		setStringerOc(j.stringerOc);
 		setClosedStair(j.closedStair);
+
+		// Load image if exists
+		if (j.imageId) {
+			try {
+				const blob = await getImage(j.imageId);
+				if (blob) {
+					const file = new File([blob], "saved-image.jpg", { type: blob.type });
+					setUploadedImage(file);
+				}
+			} catch (error) {
+				console.error("Failed to load image:", error);
+			}
+		} else {
+			setUploadedImage(null);
+		}
+
+		// Load render view preference
+		if (j.renderViewPreference) {
+			setActiveRenderView(j.renderViewPreference);
+		} else {
+			setActiveRenderView("none");
+		}
 	};
 	const deleteJob = (id: string) => {
 		setJobs((prev) => prev.filter((j) => j.id !== id));
@@ -527,6 +593,44 @@ export default function Home() {
 						</div>
 					)}
 				</section>
+
+				{/* Visualization */}
+				{result.ok && (
+					<section style={card}>
+						<div style={cardTitle}>VISUALIZATION</div>
+
+						<ImageUpload
+							onImageUploaded={setUploadedImage}
+							currentImage={uploadedImage}
+						/>
+
+						<RenderingControls
+							activeView={activeRenderView}
+							onViewChange={setActiveRenderView}
+							view2DType={view2DType}
+							onView2DTypeChange={setView2DType}
+						/>
+
+						{activeRenderView === "2d" && (
+							<Canvas2DView
+								stairData={result.out}
+								materialsData={result.mat}
+								stairWidthIn={result.stairWidthIn}
+								viewType={view2DType}
+								jobName={jobName}
+							/>
+						)}
+
+						{activeRenderView === "3d" && (
+							<Three3DView
+								stairData={result.out}
+								materialsData={result.mat}
+								stairWidthIn={result.stairWidthIn}
+								backgroundImage={uploadedImage}
+							/>
+						)}
+					</section>
+				)}
 			</div>
 		</main>
 	);
